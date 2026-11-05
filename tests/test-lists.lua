@@ -75,10 +75,29 @@ end
 
 --- Load `lines` into a fresh markdown buffer, put the cursor at (row, col) and
 --- feed `typed`. Returns the resulting lines.
-local function run(lines, cursor, typed)
+--- Wrap this buffer's insert mapping the way blink.cmp does: its own `expr`
+--- mapping on top, falling back to ours (non-expr callbacks are `vim.schedule`d).
+local function blinkify(lhs)
+	local m = vim.fn.maparg(lhs, "i", false, true)
+	vim.keymap.set("i", lhs, function()
+		if m.expr ~= 1 then
+			vim.schedule(m.callback)
+			return
+		end
+		local expr = m.callback()
+		return m.replace_keycodes == 1 and vim.api.nvim_replace_termcodes(expr, true, true, true) or expr
+	end, { buffer = true, expr = true, noremap = true, replace_keycodes = false })
+end
+
+local function run(lines, cursor, typed, blink)
 	local buf = vim.api.nvim_create_buf(false, true)
 	vim.api.nvim_set_current_buf(buf)
 	vim.bo[buf].filetype = "markdown"
+	if blink then
+		for _, lhs in ipairs({ "<CR>", "<Tab>", "<S-Tab>" }) do
+			blinkify(lhs)
+		end
+	end
 	vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
 	vim.api.nvim_win_set_cursor(0, cursor)
 	keys(typed)
@@ -151,6 +170,26 @@ assert_eq("empty nested ordered un-nests", run({ "1. a", "2. b", "   1. " }, { 3
 assert_eq("un-nest leaves the cursor on the item", run({ "- parent", "    - " }, { 2, 0 }, "A<CR>x<Esc>"), { "- parent", "- x" })
 assert_eq("one undo reverts Enter and renumbering", run({ "1. a", "2. b" }, { 1, 0 }, "A<CR>x<Esc>u"), { "1. a", "2. b" })
 assert_eq("one undo reverts Tab", run({ "1. a", "2. b", "3. c" }, { 2, 0 }, "A<Tab><Esc>u"), { "1. a", "2. b", "3. c" })
+
+io.write("\n--- edge cases ---\n")
+assert_eq("9 to 10 renumbers", run({ "9. a", "10. b", "11. c" }, { 1, 0 }, "A<CR>x<Esc>"), { "9. a", "10. x", "11. b", "12. c" })
+assert_eq("nest into 10+ digits", run({ "1. a", "10. b" }, { 2, 0 }, "A<Tab><Esc>"), { "1. a", "   1. b" })
+assert_eq("other delimiter is a separate list", run({ "1. a", "2. b", "1) c" }, { 1, 0 }, "A<CR>x<Esc>"), { "1. a", "2. x", "3. b", "1) c" })
+assert_eq("bullet ends the ordered run", run({ "1. a", "- x", "2. b" }, { 1, 0 }, "A<CR>y<Esc>"), { "1. a", "2. y", "- x", "2. b" })
+assert_eq("loose list renumbers", run({ "1. a", "", "2. b", "", "3. c" }, { 1, 0 }, "A<CR>x<Esc>"), { "1. a", "2. x", "", "3. b", "", "4. c" })
+assert_eq("quoted list renumbers", run({ "> 1. a", "> 2. b" }, { 1, 0 }, "A<CR>x<Esc>"), { "> 1. a", "> 2. x", "> 3. b" })
+assert_eq("quoted tab nests", run({ "> - a", "> - b" }, { 2, 0 }, "A<Tab><Esc>"), { "> - a", ">   - b" })
+assert_eq("tab-indented list nests", run({ "\t1. a", "\t2. b" }, { 2, 0 }, "A<Tab><Esc>"), { "\t1. a", "\t   1. b" })
+assert_eq("tab on a task item", run({ "- [ ] a", "- [x] b" }, { 2, 0 }, "A<Tab><Esc>"), { "- [ ] a", "  - [x] b" })
+
+io.write("\n--- behind blink.cmp's mappings ---\n")
+assert_eq("blink: enter continues", run({ "- a" }, { 1, 0 }, "A<CR>b<Esc>", true), { "- a", "- b" })
+assert_eq("blink: queued enters", run({ "1. one" }, { 1, 0 }, "A<CR>two<CR>three<Esc>", true), { "1. one", "2. two", "3. three" })
+assert_eq("blink: enter mid-item", run({ "1. one", "2. two" }, { 1, 0 }, "A<CR>x<Esc>", true), { "1. one", "2. x", "3. two" })
+assert_eq("blink: tab nests", run({ "1. a", "2. b", "3. c", "4. d" }, { 3, 0 }, "A<Tab><Esc>", true), { "1. a", "2. b", "   1. c", "3. d" })
+assert_eq("blink: shift-tab un-nests", run({ "1. a", "2. b", "   1. c" }, { 3, 0 }, "A<S-Tab><Esc>", true), { "1. a", "2. b", "3. c" })
+assert_eq("blink: empty nested un-nests", run({ "- p", "    - " }, { 2, 0 }, "A<CR>", true), { "- p", "- " })
+assert_eq("blink: paragraph is plain", run({ "hello" }, { 1, 0 }, "A<CR>x<Esc>", true), { "hello", "x" })
 
 io.write("\n--- fallback to the global <CR> ---\n")
 vim.keymap.set("i", "<CR>", function()

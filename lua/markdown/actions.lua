@@ -86,13 +86,15 @@ local function item_above(buf, row, quote, max_width)
 end
 
 --- Renumber the ordered items below `row` that sit at indent `width`, counting
---- on from `last`. Stops at a shallower item, unindented text or a bullet.
+--- on from `last`. Stops at a shallower item, unindented text, a bullet or an
+--- item with another delimiter ("1)" after "1." starts a new list).
 ---@param buf integer
 ---@param row integer
 ---@param width integer
 ---@param quote string
+---@param delim string
 ---@param last integer
-local function renumber_below(buf, row, width, quote, last)
+local function renumber_below(buf, row, width, quote, delim, last)
 	for i, line in ipairs(vim.api.nvim_buf_get_lines(buf, row, -1, false)) do
 		if line:match("%S") then
 			local item = list.parse(line)
@@ -105,7 +107,7 @@ local function renumber_below(buf, row, width, quote, last)
 					return
 				end
 				if w == width then
-					if item.kind ~= "ordered" then
+					if item.kind ~= "ordered" or item.delim ~= delim then
 						return
 					end
 					last = last + 1
@@ -121,6 +123,16 @@ local function renumber_below(buf, row, width, quote, last)
 			end
 		end
 	end
+end
+
+--- Is `sibling` the previous item of the same ordered list as `item` once `item`
+--- sits at indent width `width`?
+---@param sibling Markdown.Item|nil
+---@param item Markdown.Item
+---@param width integer
+---@return boolean
+local function same_list(sibling, item, width)
+	return sibling ~= nil and sibling.kind == "ordered" and sibling.delim == item.delim and list.width(sibling.indent) == width
 end
 
 --- Give the item on `row` a new indent and (ordered items) number. Returns the
@@ -166,7 +178,7 @@ function M.fill()
 
 	local item = list.parse(prefix)
 	if item and item.kind == "ordered" then
-		renumber_below(0, row, list.width(item.indent), item.quote, item.number)
+		renumber_below(0, row, list.width(item.indent), item.quote, item.delim, item.number)
 	end
 end
 
@@ -186,15 +198,15 @@ function M.nest()
 	local indent = list.child_indent(parent)
 	local width = list.width(indent)
 	local sibling = item_above(0, row, item.quote, width)
-	local number = sibling and sibling.kind == "ordered" and list.width(sibling.indent) == width and sibling.number + 1 or 1
+	local number = same_list(sibling, item, width) and sibling.number + 1 or 1
 	local delta = reindent(row, item, indent, number)
 	vim.api.nvim_win_set_cursor(0, { row, math.max(col + delta, 0) })
 
 	if item.kind == "ordered" then
-		renumber_below(0, row, width, item.quote, number)
+		renumber_below(0, row, width, item.quote, item.delim, number)
 	end
 	if parent.kind == "ordered" then
-		renumber_below(0, row, old_width, item.quote, parent.number)
+		renumber_below(0, row, old_width, item.quote, parent.delim, parent.number)
 	end
 end
 
@@ -214,14 +226,14 @@ function M.dedent()
 	local indent = parent and parent.indent or ""
 	local width = list.width(indent)
 	local sibling = item_above(0, row, item.quote, width)
-	local number = sibling and sibling.kind == "ordered" and list.width(sibling.indent) == width and sibling.number + 1 or 1
+	local number = same_list(sibling, item, width) and sibling.number + 1 or 1
 	local delta = reindent(row, item, indent, number)
 	vim.api.nvim_win_set_cursor(0, { row, math.max(col + delta, 0) })
 
 	if item.kind == "ordered" then
-		renumber_below(0, row, width, item.quote, number)
+		renumber_below(0, row, width, item.quote, item.delim, number)
 		-- Deeper items that followed now belong to this item and start over.
-		renumber_below(0, row, old_width, item.quote, 0)
+		renumber_below(0, row, old_width, item.quote, item.delim, 0)
 	end
 end
 
@@ -274,6 +286,24 @@ end
 ---@return string keys
 function M.shift_tab()
 	return indent_keys("<S-Tab>", "dedent")
+end
+
+--- Run the action called `name` ("enter", "tab" or "shift_tab") and feed the keys
+--- it decides on to the front of the typeahead. Reached through the `<Cmd>` that
+--- `M.keys` returns, so it runs when the key is consumed, in order.
+---@param name string
+function M.press(name)
+	vim.api.nvim_feedkeys(M[name](), "ni", false)
+end
+
+--- The rhs of the insert mappings (use with `expr`): a constant `<Cmd>` that
+--- defers every decision to `press`. It must not look at the buffer itself:
+--- Neovim evaluates `expr` mappings while peeking at queued keys, before the
+--- characters typed ahead of the key are in the buffer.
+---@param name string
+---@return string keys  raw bytes
+function M.keys(name)
+	return termcodes("<Cmd>lua require('markdown.actions').press('" .. name .. "')<CR>")
 end
 
 return M
