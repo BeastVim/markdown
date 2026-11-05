@@ -108,12 +108,27 @@ assert_eq("fence is plain", run({ "```", "- x" }, { 2, 0 }, "A<CR>y<Esc>"), { "`
 assert_eq("after closed fence continues", run({ "```", "code", "```", "- x" }, { 4, 0 }, "A<CR>y<Esc>"), { "```", "code", "```", "- x", "- y" })
 assert_eq("one undo reverts Enter", run({ "- a" }, { 1, 0 }, "A<CR>b<Esc>u"), { "- a" })
 
+assert_eq("multibyte split", run({ "- héllo wörld" }, { 1, 10 }, "i<CR><Esc>"), { "- héllo w", "- örld" })
+assert_eq("tilde fence is plain", run({ "~~~", "- x" }, { 2, 0 }, "A<CR>y<Esc>"), { "~~~", "- x", "y" })
+assert_eq("tab indent kept", run({ "\t- a" }, { 1, 0 }, "A<CR>b<Esc>"), { "\t- a", "\t- b" })
+local boxed = run({ "- [ ] a" }, { 1, 3 }, "i<CR><Esc>")
+assert_eq("cursor inside checkbox is plain", #boxed == 2 and boxed[1] == "- [" and not boxed[2]:match("^%s*[-*+] "), true)
+assert_eq("mid-sentence split trims trailing space", run({ "- buy milk" }, { 1, 6 }, "i<CR><Esc>")[1], "- buy")
+assert_eq("end of line keeps hard-break spaces", run({ "- a  " }, { 1, 0 }, "A<CR>b<Esc>"), { "- a  ", "- b" })
+vim.o.autoindent = false
+assert_eq("noautoindent nested", run({ "  - a" }, { 1, 0 }, "A<CR>b<Esc>"), { "  - a", "  - b" })
+assert_eq("noautoindent mid-split", run({ "  - ab" }, { 1, 5 }, "i<CR><Esc>"), { "  - a", "  - b" })
+vim.o.autoindent = true
+
 io.write("\n--- fallback to the global <CR> ---\n")
 vim.keymap.set("i", "<CR>", function()
 	return vim.api.nvim_replace_termcodes("<CR>#", true, true, true)
 end, { expr = true, replace_keycodes = false })
 assert_eq("non-list uses previous mapping", run({ "hello" }, { 1, 0 }, "A<CR><Esc>"), { "hello", "#" })
 assert_eq("list ignores previous mapping", run({ "- a" }, { 1, 0 }, "A<CR>b<Esc>"), { "- a", "- b" })
+
+vim.keymap.set("i", "<CR>", function() end, {})
+assert_eq("non-expr global callback is ignored", run({ "hello" }, { 1, 0 }, "A<CR>x<Esc>"), { "hello", "x" })
 
 io.write(string.format("\n%d passed, %d failed\n", passed, failed))
 os.exit(failed == 0 and 0 or 1)

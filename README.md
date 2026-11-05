@@ -1,8 +1,8 @@
 # markdown
 
 List editing for markdown buffers in [BeastVim](https://github.com/loctvl842/BeastVim):
-Enter continues bullets, numbers and task items (and exits on an empty item), Tab / Shift-Tab
-nest and un-nest with numbers kept consecutive, and `o` / `O` continue the list.
+Enter continues bullet, numbered and task items, splits an item mid-text, and exits the list
+on an empty item. Never active inside fenced code blocks.
 Built only for the BeastVim ecosystem - it uses the `Key` and `Treesitter` globals
 provided by BeastVim. Not usable standalone.
 

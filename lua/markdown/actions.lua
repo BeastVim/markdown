@@ -20,14 +20,14 @@ end
 ---@param lhs string  e.g. "<CR>"
 ---@return string keys  raw bytes
 local function fallback(lhs)
-	local want = termcodes(lhs)
 	for _, map in ipairs(vim.api.nvim_get_keymap("i")) do
-		if map.callback and termcodes(map.lhs) == want then
+		-- Only expr callbacks hand back keys; any other mapping is skipped.
+		if map.lhs == lhs and map.callback and map.expr == 1 then
 			local keys = map.callback()
 			return map.replace_keycodes == 1 and termcodes(keys) or keys
 		end
 	end
-	return want
+	return termcodes(lhs)
 end
 
 --- Is `row` (1-based) inside a fenced code block, judged by the fence openers
@@ -68,12 +68,15 @@ function M.fill()
 	vim.api.nvim_buf_set_text(0, row - 1, 0, row - 1, #ws, { prefix })
 	vim.api.nvim_win_set_cursor(0, { row, #prefix })
 
-	-- The split leaves trailing whitespace on the line above when the cursor
-	-- was mid-sentence ("buy |milk").
-	local prev = vim.api.nvim_buf_get_lines(0, row - 2, row - 1, false)[1]
-	local trimmed = prev and prev:gsub("%s+$", "")
-	if trimmed and #trimmed < #prev then
-		vim.api.nvim_buf_set_text(0, row - 2, #trimmed, row - 2, #prev, { "" })
+	-- A mid-sentence split ("buy |milk") leaves trailing whitespace on the line
+	-- above. Only then: at the end of a line, trailing spaces are the user's own
+	-- (two of them are a markdown hard line break).
+	if #ws < #line then
+		local prev = vim.api.nvim_buf_get_lines(0, row - 2, row - 1, false)[1]
+		local trimmed = prev:gsub("%s+$", "")
+		if #trimmed < #prev then
+			vim.api.nvim_buf_set_text(0, row - 2, #trimmed, row - 2, #prev, { "" })
+		end
 	end
 end
 
@@ -91,7 +94,8 @@ end
 function M.enter()
 	local row, col = unpack(vim.api.nvim_win_get_cursor(0))
 	local item = list.parse(vim.api.nvim_get_current_line())
-	if vim.fn.pumvisible() == 1 or not item or col < item.marker_end or M.in_fence(0, row) then
+	-- Inside the marker, indent or checkbox Enter stays a plain newline.
+	if vim.fn.pumvisible() == 1 or not item or col < (item.checkbox and item.content_start or item.marker_end) or M.in_fence(0, row) then
 		return fallback("<CR>")
 	end
 	if item.content == "" then
