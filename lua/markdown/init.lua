@@ -15,6 +15,15 @@ local function attach(buf)
 	map("<CR>", "enter", "Markdown: continue list")
 	map("<Tab>", "tab", "Markdown: nest list item")
 	map("<S-Tab>", "shift_tab", "Markdown: un-nest list item")
+
+	for lhs, action in pairs({ o = "open_below", O = "open_above" }) do
+		Key.safe_set("n", lhs, "<Cmd>lua require('markdown.actions')." .. action .. "()<CR>", {
+			buffer = buf,
+			noremap = true,
+			desc = "Markdown: open list item " .. (lhs == "o" and "below" or "above"),
+			group = "Markdown",
+		})
+	end
 end
 
 function M.setup()

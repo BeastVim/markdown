@@ -288,6 +288,50 @@ function M.shift_tab()
 	return indent_keys("<S-Tab>", "dedent")
 end
 
+--- Is the current line an item `o` / `O` should continue? Empty items, counts
+--- (`3o`), fences and non-list lines keep the plain key.
+---@return Markdown.Item|nil
+local function openable_item()
+	local item = list.parse(vim.api.nvim_get_current_line())
+	if not item or item.content == "" or vim.v.count > 0 or M.in_fence(0, vim.api.nvim_win_get_cursor(0)[1]) then
+		return nil
+	end
+	return item
+end
+
+--- The key as if unmapped, keeping the count the mapping swallowed.
+local function feed_plain(key)
+	vim.api.nvim_feedkeys((vim.v.count > 0 and vim.v.count or "") .. key, "ni", false)
+end
+
+--- Normal-mode `o`: on a list item, act as Enter at the end of it.
+function M.open_below()
+	if not openable_item() then
+		return feed_plain("o")
+	end
+	vim.cmd("startinsert!")
+	-- Remapped on purpose: this <CR> goes through the insert-mode mappings.
+	vim.api.nvim_feedkeys(termcodes("<CR>"), "mi", false)
+end
+
+--- Normal-mode `O`: on a list item, open a new item above it. An ordered item
+--- takes the current number and the items from here on shift down by one.
+function M.open_above()
+	local item = openable_item()
+	if not item then
+		return feed_plain("O")
+	end
+	local row = vim.api.nvim_win_get_cursor(0)[1]
+	local marker = item.kind == "ordered" and item.number .. item.delim or item.bullet
+	local prefix = item.quote .. item.indent .. marker .. item.gap .. (item.checkbox and "[ ] " or "")
+	vim.api.nvim_buf_set_lines(0, row - 1, row - 1, false, { prefix })
+	vim.api.nvim_win_set_cursor(0, { row, #prefix })
+	vim.cmd("startinsert!")
+	if item.kind == "ordered" then
+		renumber_below(0, row, list.width(item.indent), item.quote, item.delim, item.number)
+	end
+end
+
 --- Run the action called `name` ("enter", "tab" or "shift_tab") and feed the keys
 --- it decides on to the front of the typeahead. Reached through the `<Cmd>` that
 --- `M.keys` returns, so it runs when the key is consumed, in order.
