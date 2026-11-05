@@ -1,5 +1,9 @@
 local M = {}
 
+-- Parsers for markdown buffers: the two markdown grammars plus the ones the
+-- renderer (markview.nvim) uses for embedded html, yaml front matter and math.
+M.parsers = { "markdown", "markdown_inline", "html", "latex", "typst", "yaml" }
+
 --- Install the buffer-local list mappings.
 ---@param buf integer
 local function attach(buf)
@@ -43,8 +47,9 @@ function M.setup()
 		return
 	end
 
-	Treesitter.ensure_parser("markdown")
-	Treesitter.ensure_parser("markdown_inline")
+	for _, lang in ipairs(M.parsers) do
+		Treesitter.ensure_parser(lang)
+	end
 
 	vim.api.nvim_create_autocmd("FileType", {
 		group = vim.api.nvim_create_augroup("BeastMarkdown", { clear = true }),

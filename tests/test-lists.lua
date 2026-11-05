@@ -16,7 +16,12 @@ _G.Key = {
 		vim.keymap.set(mode, lhs, rhs, o)
 	end,
 }
-_G.Treesitter = { ensure_parser = function() end }
+local ensured = {}
+_G.Treesitter = {
+	ensure_parser = function(lang)
+		table.insert(ensured, lang)
+	end,
+}
 
 local passed, failed = 0, 0
 
@@ -68,6 +73,7 @@ io.write("\n--- Enter mapping ---\n")
 vim.o.autoindent = true
 vim.bo.filetype = "markdown"
 markdown.setup()
+assert_eq("ensures every parser", ensured, { "markdown", "markdown_inline", "html", "latex", "typst", "yaml" })
 
 local function keys(s)
 	vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes(s, true, true, true), "xt", false)
