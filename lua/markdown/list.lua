@@ -74,6 +74,22 @@ function M.parse(line)
 	return item
 end
 
+--- Display width of leading whitespace (tabs count as 'tabstop').
+---@param ws string
+---@return integer
+function M.width(ws)
+	return vim.fn.strdisplaywidth(ws)
+end
+
+--- Whitespace that nests a child under `item`: aligned with the parent's content,
+--- the smallest indent CommonMark accepts (2 for "- ", 3 for "1. ").
+---@param item Markdown.Item
+---@return string
+function M.child_indent(item)
+	local marker = item.kind == "ordered" and item.number .. item.delim or item.bullet
+	return item.indent .. (" "):rep(#marker + #item.gap)
+end
+
 --- The text that starts the item following `item` (quote, indent, marker, gap
 --- and an empty checkbox when `item` had one).
 ---@param item Markdown.Item

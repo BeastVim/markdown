@@ -4,17 +4,17 @@ local M = {}
 ---@param buf integer
 local function attach(buf)
 	local actions = require("markdown.actions")
-	-- Not an `expr` mapping: Neovim evaluates those while peeking at queued keys
+	-- Not `expr` mappings: Neovim evaluates those while peeking at queued keys
 	-- (macros, fast typing), when the line does not yet hold the characters typed
-	-- before the <CR>. A callback runs when the key is consumed, in order.
-	Key.safe_set("i", "<CR>", function()
-		vim.api.nvim_feedkeys(actions.enter(), "ni", false)
-	end, {
-		buffer = buf,
-		noremap = true,
-		desc = "Markdown: continue list",
-		group = "Markdown",
-	})
+	-- before the key. A callback runs when the key is consumed, in order.
+	local function map(lhs, action, desc)
+		Key.safe_set("i", lhs, function()
+			vim.api.nvim_feedkeys(action(), "ni", false)
+		end, { buffer = buf, noremap = true, desc = desc, group = "Markdown" })
+	end
+	map("<CR>", actions.enter, "Markdown: continue list")
+	map("<Tab>", actions.tab, "Markdown: nest list item")
+	map("<S-Tab>", actions.shift_tab, "Markdown: un-nest list item")
 end
 
 function M.setup()

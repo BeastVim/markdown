@@ -120,6 +120,38 @@ assert_eq("noautoindent nested", run({ "  - a" }, { 1, 0 }, "A<CR>b<Esc>"), { " 
 assert_eq("noautoindent mid-split", run({ "  - ab" }, { 1, 5 }, "i<CR><Esc>"), { "  - a", "  - b" })
 vim.o.autoindent = true
 
+io.write("\n--- renumbering, Tab and Shift-Tab ---\n")
+assert_eq(
+	"insert mid-list renumbers",
+	run({ "1. one", "2. two", "3. three" }, { 1, 0 }, "A<CR>inserted<Esc>"),
+	{ "1. one", "2. inserted", "3. two", "4. three" }
+)
+local others = run({ "1. a", "2. b", "", "- x", "", "1. z" }, { 1, 0 }, "A<CR><Esc>")
+assert_eq("other list untouched", others[#others], "1. z")
+assert_eq("tab nests bullet", run({ "- a", "- b" }, { 2, 0 }, "A<Tab><Esc>"), { "- a", "  - b" })
+assert_eq("tab nests ordered, restarts at 1", run({ "1. a", "2. b", "3. " }, { 3, 0 }, "A<Tab><Esc>"), { "1. a", "2. b", "   1. " })
+assert_eq("shift-tab un-nests ordered", run({ "1. a", "2. b", "3. " }, { 3, 0 }, "A<Tab><S-Tab><Esc>"), { "1. a", "2. b", "3. " })
+assert_eq("tab keeps cursor on text", run({ "- a", "- b" }, { 2, 0 }, "A<Tab>x<Esc>"), { "- a", "  - bx" })
+assert_eq("tab renumbers both levels", run({ "1. a", "2. b", "3. c", "4. d" }, { 3, 0 }, "A<Tab><Esc>"), { "1. a", "2. b", "   1. c", "3. d" })
+assert_eq("tab joins existing child list", run({ "1. a", "   1. b", "2. c" }, { 3, 0 }, "A<Tab><Esc>"), { "1. a", "   1. b", "   2. c" })
+assert_eq(
+	"shift-tab renumbers both levels",
+	run({ "1. a", "2. b", "   1. c", "   2. d", "3. e" }, { 3, 0 }, "A<S-Tab><Esc>"),
+	{ "1. a", "2. b", "3. c", "   1. d", "4. e" }
+)
+assert_eq("tab on first item is a no-op", run({ "- a" }, { 1, 0 }, "A<Tab>x<Esc>"), { "- ax" })
+assert_eq("shift-tab at top level is a no-op", run({ "- a" }, { 1, 0 }, "A<S-Tab>x<Esc>"), { "- ax" })
+-- Plain Tab only adds whitespace (spaces or a tab, per the buffer's 'expandtab').
+local para = run({ "hello" }, { 1, 0 }, "A<Tab><Esc>")
+assert_eq("tab in a paragraph is plain", #para == 1 and para[1]:match("^hello%s+$") ~= nil, true)
+local fenced = run({ "```", "- a", "- b" }, { 3, 0 }, "A<Tab><Esc>")
+assert_eq("tab in a fence is plain", fenced[2] == "- a" and fenced[3]:match("^%- b%s+$") ~= nil, true)
+assert_eq("empty nested bullet un-nests", run({ "- parent", "    - " }, { 2, 0 }, "A<CR>"), { "- parent", "- " })
+assert_eq("empty nested ordered un-nests", run({ "1. a", "2. b", "   1. " }, { 3, 0 }, "A<CR>"), { "1. a", "2. b", "3. " })
+assert_eq("un-nest leaves the cursor on the item", run({ "- parent", "    - " }, { 2, 0 }, "A<CR>x<Esc>"), { "- parent", "- x" })
+assert_eq("one undo reverts Enter and renumbering", run({ "1. a", "2. b" }, { 1, 0 }, "A<CR>x<Esc>u"), { "1. a", "2. b" })
+assert_eq("one undo reverts Tab", run({ "1. a", "2. b", "3. c" }, { 2, 0 }, "A<Tab><Esc>u"), { "1. a", "2. b", "3. c" })
+
 io.write("\n--- fallback to the global <CR> ---\n")
 vim.keymap.set("i", "<CR>", function()
 	return vim.api.nvim_replace_termcodes("<CR>#", true, true, true)
