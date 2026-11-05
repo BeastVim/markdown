@@ -90,13 +90,21 @@ function M.child_indent(item)
 	return item.indent .. (" "):rep(#marker + #item.gap)
 end
 
---- The text that starts the item following `item` (quote, indent, marker, gap
---- and an empty checkbox when `item` had one).
+--- The text that starts an item shaped like `item` but numbered `number`
+--- (quote, indent, marker, gap, and an empty checkbox when `item` had one).
+---@param item Markdown.Item
+---@param number integer|nil  ordered items only
+---@return string
+function M.prefix(item, number)
+	local marker = item.kind == "ordered" and number .. item.delim or item.bullet
+	return item.quote .. item.indent .. marker .. item.gap .. (item.checkbox and "[ ] " or "")
+end
+
+--- The text that starts the item following `item`.
 ---@param item Markdown.Item
 ---@return string
 function M.next_prefix(item)
-	local marker = item.kind == "ordered" and (item.number + 1) .. item.delim or item.bullet
-	return item.quote .. item.indent .. marker .. item.gap .. (item.checkbox and "[ ] " or "")
+	return M.prefix(item, item.number and item.number + 1)
 end
 
 return M

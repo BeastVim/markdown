@@ -299,19 +299,29 @@ local function openable_item()
 	return item
 end
 
---- The key as if unmapped, keeping the count the mapping swallowed.
+--- The key as if unmapped, keeping the count and register the mapping swallowed.
 local function feed_plain(key)
-	vim.api.nvim_feedkeys((vim.v.count > 0 and vim.v.count or "") .. key, "ni", false)
+	local register = vim.v.register ~= '"' and '"' .. vim.v.register or ""
+	vim.api.nvim_feedkeys(register .. (vim.v.count > 0 and vim.v.count or "") .. key, "ni", false)
 end
 
---- Normal-mode `o`: on a list item, act as Enter at the end of it.
+--- Feed the real `o` / `O` key, then let `fill()` turn the empty line it opens
+--- into the item. Going through the real command keeps the open in the redo
+--- buffer (`.`) and in the same undo block as the typed text.
+---@param key string
+---@param prefix string
+local function open_item(key, prefix)
+	pending = prefix
+	vim.api.nvim_feedkeys(termcodes(key .. "<Cmd>lua require('markdown.actions').fill()<CR>"), "ni", false)
+end
+
+--- Normal-mode `o`: on a list item, open the next item below.
 function M.open_below()
-	if not openable_item() then
+	local item = openable_item()
+	if not item then
 		return feed_plain("o")
 	end
-	vim.cmd("startinsert!")
-	-- Remapped on purpose: this <CR> goes through the insert-mode mappings.
-	vim.api.nvim_feedkeys(termcodes("<CR>"), "mi", false)
+	open_item("o", list.next_prefix(item))
 end
 
 --- Normal-mode `O`: on a list item, open a new item above it. An ordered item
@@ -321,15 +331,7 @@ function M.open_above()
 	if not item then
 		return feed_plain("O")
 	end
-	local row = vim.api.nvim_win_get_cursor(0)[1]
-	local marker = item.kind == "ordered" and item.number .. item.delim or item.bullet
-	local prefix = item.quote .. item.indent .. marker .. item.gap .. (item.checkbox and "[ ] " or "")
-	vim.api.nvim_buf_set_lines(0, row - 1, row - 1, false, { prefix })
-	vim.api.nvim_win_set_cursor(0, { row, #prefix })
-	vim.cmd("startinsert!")
-	if item.kind == "ordered" then
-		renumber_below(0, row, list.width(item.indent), item.quote, item.delim, item.number)
-	end
+	open_item("O", list.prefix(item, item.number))
 end
 
 --- Run the action called `name` ("enter", "tab" or "shift_tab") and feed the keys

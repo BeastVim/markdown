@@ -14,6 +14,9 @@ Bullets (`-`, `*`, `+`), numbers (`1.`, `1)`), task items (`[ ]`, `[x]`) and blo
 (`> - item`) are recognised. Fenced code blocks are never touched, and the completion menu,
 snippet jumps and autopairs keep priority.
 
+`o` / `O` fall back to the plain key on an empty item, in a fence, off a list, and with a count (`3o`).
+`.` after `o` / `O` repeats the plain open (a new line without a marker); it never edits the item.
+
 ## Install
 
 ```lua
